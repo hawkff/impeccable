@@ -2982,19 +2982,29 @@ fn codex_stop_emits_decision_block() {
 fn hermes_harness_shapes_each_pass() {
     // #1178: the Hermes plugin sets the harness explicitly and sends
     // Claude-shaped events; its pre_verify gate reads Codex's Stop shape.
-    let forced = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    plugin_harness_shapes_each_pass("hermes");
+}
+
+#[test]
+fn pi_harness_shapes_each_pass() {
+    // The Pi extension does the same, and reads the Stop shape itself.
+    plugin_harness_shapes_each_pass("pi");
+}
+
+fn plugin_harness_shapes_each_pass(harness: &str) {
+    let forced = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", harness)]));
     let claude = json!({ "hook_event_name": "Stop", "session_id": "s" }).as_object().cloned().unwrap();
-    assert_eq!(resolve_harness(&forced, Some(&claude)), "hermes");
-    assert_eq!(payload("findings", "Stop", "hermes"), r#"{"decision":"block","reason":"findings"}"#);
-    assert_eq!(payload("  ", "Stop", "hermes"), "");
+    assert_eq!(resolve_harness(&forced, Some(&claude)), harness);
+    assert_eq!(payload("findings", "Stop", harness), r#"{"decision":"block","reason":"findings"}"#);
+    assert_eq!(payload("  ", "Stop", harness), "");
     assert_eq!(
-        payload("t", "PostToolUse", "hermes"),
+        payload("t", "PostToolUse", harness),
         r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"}}"#
     );
 
     let t = Tmp::new();
     let cwd = t.path();
-    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", harness)]));
     let css = t.write("src/a.css", SIDE_TAB_CSS);
     let edit = json!({
         "session_id": "h1", "cwd": cwd, "hook_event_name": "PostToolUse",
@@ -3002,7 +3012,7 @@ fn hermes_harness_shapes_each_pass() {
     })
     .to_string();
     let quiet = hook::run_hook(&r, &edit);
-    assert_eq!(audit_str(&quiet.audit, "harness"), Some("hermes"));
+    assert_eq!(audit_str(&quiet.audit, "harness"), Some(harness));
     assert!(!quiet.stdout.contains("[side-tab]"), "side-tab is deferred to Stop: {}", quiet.stdout);
     let stop = stop_event(&cwd, "h1");
     let deep = hook::run_stop_hook(&r, &stop);
@@ -3921,6 +3931,31 @@ fn status_and_on_recognize_enabled_hermes_plugins() {
         let (out, _, _) = admin_run(&r, &["on"]);
         assert!(out.contains("No design harness is wired"), "{out}");
         assert_eq!(t.read(&config), disabled);
+    }
+}
+
+#[test]
+fn status_and_on_recognize_an_installed_pi_extension() {
+    // In the project's `.pi`, and in Pi's agent dir under the home dir.
+    for base in [".pi", "home/.pi/agent"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let home = t.0.join("home").to_string_lossy().into_owned();
+        let extension = format!("{base}/extensions/impeccable-design-hook/index.js");
+        t.write(&extension, "");
+        t.write(&format!("{base}/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n");
+        let r = rt_with(&cwd, env(&[("HOME", &home), ("USERPROFILE", &home)]));
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("wiring .pi: wired (extension)"), "{status}");
+        assert!(!status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("Pi design hook extension is already installed"), "{out}");
+        assert!(!out.contains("No design harness is wired"), "{out}");
+        std::fs::remove_file(t.0.join(&extension)).unwrap();
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
     }
 }
 

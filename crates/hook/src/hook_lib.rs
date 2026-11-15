@@ -1844,12 +1844,13 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if matches!(harness, "codex" | "gemini" | "hermes") && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini" | "hermes" | "pi") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
         // https://developers.openai.com/codex/hooks#stop
         // Hermes' pre_verify plugin hands this same shape to its verify gate.
+        // Pi's extension turns it into a message that keeps the run going.
         if js::trim(text).is_empty() {
             return String::new();
         }
@@ -1942,6 +1943,7 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("codex") => return "codex",
         Some("gemini") => return "gemini",
         Some("hermes") => return "hermes",
+        Some("pi") => return "pi",
         _ => {}
     }
     if let Some(ev) = event {

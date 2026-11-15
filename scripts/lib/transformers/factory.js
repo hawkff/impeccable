@@ -461,7 +461,8 @@ export function createTransformer(config) {
     }
 
     // Emit a provider plugin verbatim from the skill's payloads (Hermes:
-    // skill/hermes-plugin/ -> .hermes/plugins/impeccable-design-hook/). A
+    // skill/hermes-plugin/ -> .hermes/plugins/impeccable-design-hook/; Pi:
+    // skill/pi-extension/ -> .pi/extensions/impeccable-design-hook/). A
     // skill without the payload emits none; tests/hook-build.test.mjs pins
     // that the real source carries it.
     let pluginInfo = '';

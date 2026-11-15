@@ -3471,7 +3471,8 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
     if cmd == "completion" {
         let state = load_state(io);
         let session_id = arg(argv, "session-id").or_else(|| io.env("IMPECCABLE_SESSION_ID"))
-            .or_else(|| io.env("CODEX_THREAD_ID"));
+            .or_else(|| io.env("CODEX_THREAD_ID"))
+            .or_else(|| io.env("PI_SESSION_ID"));
         let report = crate::completion::report(&io.cwd, state.as_ref(), session_id);
         io.out(&format!("{}\n", util::json_pretty(&report)));
         return 0;
@@ -3548,6 +3549,7 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
         if let Some(session_id) = arg(argv, "session-id")
             .or_else(|| io.env("IMPECCABLE_SESSION_ID"))
             .or_else(|| io.env("CODEX_THREAD_ID"))
+            .or_else(|| io.env("PI_SESSION_ID"))
             .filter(|s| !s.is_empty())
         {
             state["sessionId"] = json!(session_id);

@@ -10,6 +10,7 @@ pub mod provider;
 pub mod hook_markers;
 pub mod hook_wiring;
 pub mod hermes;
+pub mod pi;
 pub mod target_args;
 pub mod target_slug;
 pub mod surface_briefs;

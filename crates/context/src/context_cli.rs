@@ -140,6 +140,14 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         let home = crate::hermes::hermes_global_home(env, cwd, &crate::util::homedir(env));
         return if crate::hermes::plugin_enabled(&home) { "stop" } else { "none" };
     }
+    // Pi runs the hook from an extension, at turn end. A loaded extension
+    // names its session to the shells Pi starts, beside the id Pi exports
+    // there itself, so one that is installed but disabled, or not loaded yet,
+    // keeps the manual detector fallback.
+    if provider.id == "pi" {
+        let loaded = env_nonempty(env, crate::pi::HOOK_SESSION_ENV);
+        return if loaded.is_some() && loaded == env_nonempty(env, "PI_SESSION_ID") { "stop" } else { "none" };
+    }
     // Gemini's manifest carries only the session and build-completion hooks,
     // no detector pass, so it never counts as automatic coverage.
     if provider.id == "gemini" {
@@ -1421,6 +1429,39 @@ mod user_scope_hook_tests {
         assert_eq!(fixture.mode(), "stop", "HERMES_HOME under home");
     }
 
+    /// A Pi shell: `session` is the id Pi exports, `loaded` the one the
+    /// extension names when it is loaded.
+    fn pi_fixture(session: Option<&str>, loaded: Option<&str>) -> UserHookFixture {
+        let mut fixture = UserHookFixture::new("pi");
+        for (key, value) in [("PI_SESSION_ID", session), (crate::pi::HOOK_SESSION_ENV, loaded)] {
+            if let Some(value) = value {
+                fixture.env.insert(key.to_string(), value.to_string());
+            }
+        }
+        fixture
+    }
+
+    #[test]
+    fn pi_extension_loaded_in_this_session_supplies_stop_coverage() {
+        assert_eq!(pi_fixture(Some("s1"), Some("s1")).mode(), "stop");
+    }
+
+    #[test]
+    fn pi_extension_not_loaded_in_this_session_falls_back_to_manual() {
+        // Installed files alone do not count: Pi can have the extension
+        // disabled, or not have reloaded since the install.
+        let fixture = pi_fixture(Some("s1"), None);
+        fixture.put("project/.pi/extensions/impeccable-design-hook/index.js", "");
+        fixture.put("project/.pi/skills/impeccable/scripts/impeccable", "");
+        assert_eq!(fixture.mode(), "none", "installed, not loaded");
+        assert_eq!(pi_fixture(Some("s2"), Some("s1")).mode(), "none", "loaded in the session that started this one");
+        assert_eq!(pi_fixture(None, Some("s1")).mode(), "none", "not a shell Pi started");
+        assert_eq!(pi_fixture(Some(""), Some("")).mode(), "none", "empty ids");
+        let mut fixture = pi_fixture(Some("s1"), Some("s1"));
+        fixture.env.insert("IMPECCABLE_HOOK_DISABLED".to_string(), "yes".to_string());
+        assert_eq!(fixture.mode(), "none", "environment disabled");
+    }
+
     #[test]
     fn claude_user_settings_supply_automatic_hook_coverage() {
         let root = std::env::temp_dir().join(format!(
@@ -1741,7 +1782,7 @@ mod hook_not_installed_tests {
     fn silent_where_there_is_nothing_to_install() {
         // No hook surface for this harness (a plugin or source checkout
         // resolves to `source`), and native projects have no web hook.
-        for provider in ["source", "kiro", "hermes"] {
+        for provider in ["source", "kiro", "hermes", "pi"] {
             assert!(Fixture::new(provider).findings().is_empty(), "{provider}");
         }
         let fixture = Fixture::new("claude-code");

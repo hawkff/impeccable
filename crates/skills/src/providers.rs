@@ -134,7 +134,7 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
         ".devin" => Some(jsp::join(&[&devin_global_config_dir(env, cwd, home), "skills"])),
         ".dsh" => Some(jsp::join(&[&dsh_global_home(env, cwd, home), "skills"])),
         ".hermes" => Some(jsp::join(&[&hermes_global_home(env, cwd, home), "skills"])),
-        ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
+        ".pi" => Some(impeccable_context::pi::global_skills_dir(home)),
         ".omp" => Some(jsp::join(&[home, ".omp", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
         _ => None,

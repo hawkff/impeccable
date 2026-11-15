@@ -17,11 +17,11 @@
 //! `impeccable_context::hook_markers::is_impeccable_hook_command`, so the two
 //! writers and the three readers can never disagree on what counts as ours.
 
-use impeccable_context::hermes;
+use impeccable_context::{hermes, pi};
 use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, is_impeccable_hook_command, is_launcher_hook_command, parse_manifest_jsonc, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
-use crate::providers::Sys;
+use crate::providers::{Scope, Sys};
 use crate::util::{self, jsp};
 
 pub struct HookArtifactSpec {
@@ -424,10 +424,17 @@ fn manifest_is_user_settings(provider: &str, user_scope: bool) -> bool {
 }
 
 /// JS: hookInstalledForProvider(root, provider). `.hermes`' hook is the
-/// plugin under Hermes' home, not a manifest under `root`.
+/// plugin under Hermes' home, not a manifest under `root`, and `.pi`'s is
+/// the extension beside a Pi skill: the project's in `root`, or the user's
+/// in Pi's agent dir, which Pi loads in every project.
 pub fn hook_installed_for_provider(sys: &Sys, root: &str, provider: &str) -> bool {
     if provider == ".hermes" {
         return hermes_plugin_installed(sys);
+    }
+    if provider == ".pi" {
+        return [(root, Scope::Project), (sys.home.as_str(), Scope::User)]
+            .iter()
+            .any(|(root, scope)| pi_skills_dirs(sys, root, Some(*scope)).iter().any(|dir| pi::extension_installed(dir)));
     }
     let artifacts = provider_hook_artifacts(provider);
     if artifacts.is_empty() {
@@ -463,6 +470,10 @@ pub fn hook_installed_for_provider_at_scope(sys: &Sys, root: &str, provider: &st
     }
     if user_scope && home_provider_id(provider).is_some() {
         return home_hook_is_current(sys, &sys.home, provider);
+    }
+    if provider == ".pi" {
+        let dirs = if user_scope { pi_skills_dirs(sys, &sys.home, Some(Scope::User)) } else { pi_skills_dirs(sys, root, Some(Scope::Project)) };
+        return !dirs.is_empty() && dirs.iter().all(|dir| pi::extension_installed(dir));
     }
     if user_scope && provider == ".github" && github_manifest_names_missing_project_skill(root) {
         return false;
@@ -673,7 +684,10 @@ fn json_parse_message(e: &serde_json::Error) -> String {
 
 /// JS: copyProviderHooks(bundleDir, root, providers, {force, skillRoot}).
 /// Returns the manifest paths written (deduplicated, in write order).
-pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: &str, providers: &[&'static str], force: bool, skill_root: Option<&str>, project_root: Option<&str>) -> Result<Vec<String>, String> {
+/// `scope` is the scope of the skill install the hooks go with, `None` when
+/// it was inferred: under the home dir Pi keeps a project's skills and the
+/// user's in different dirs, and its extension goes beside the one installed.
+pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: &str, providers: &[&'static str], force: bool, skill_root: Option<&str>, project_root: Option<&str>, scope: Option<Scope>) -> Result<Vec<String>, String> {
     let skill_root = skill_root.unwrap_or(root);
     let user_scope = sys.is_home_dir(skill_root);
     let mut written: Vec<String> = Vec::new();
@@ -682,6 +696,16 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             let dest = hermes_plugin_dir(sys);
             if copy_hermes_plugin(sys, bundle_dir)? && !written.contains(&dest) {
                 written.push(dest);
+            }
+            continue;
+        }
+        if *provider == ".pi" {
+            let src = jsp::join(&[bundle_dir, ".pi", "extensions", pi::EXTENSION_NAME]);
+            for skills_dir in pi_skills_dirs(sys, skill_root, scope) {
+                let dest = pi::extension_dir(&skills_dir);
+                if copy_plugin_payload(&src, &dest, &pi::EXTENSION_FILES, "Pi extension")? && !written.contains(&dest) {
+                    written.push(dest);
+                }
             }
             continue;
         }
@@ -881,25 +905,42 @@ fn same_file(a: &str, b: &str) -> bool {
 
 /// The Hermes gateway loads plugins from its home dir, not from a project,
 /// so project and global installs alike copy the bundled plugin to `<hermes home>/plugins/`
-/// (#1178), overwriting a partial or stale copy. A bundle without the plugin
-/// is skipped like a bundle without a provider's manifest; a bundle with half
-/// of it is broken and fails. Returns whether the plugin was written.
+/// (#1178). Returns whether the plugin was written.
 fn copy_hermes_plugin(sys: &Sys, bundle_dir: &str) -> Result<bool, String> {
     let src = jsp::join(&[bundle_dir, ".hermes", "plugins", hermes::PLUGIN_NAME]);
-    if !util::exists(&src) {
+    copy_plugin_payload(&src, &hermes_plugin_dir(sys), &hermes::PLUGIN_FILES, "Hermes plugin")
+}
+
+/// Copies a bundled plugin payload (the Hermes plugin, the Pi extension) to
+/// `dest`, overwriting a partial or stale copy. A bundle without the payload
+/// is skipped like a bundle without a provider's manifest; a bundle with part
+/// of it is broken and fails. Returns whether the payload was written.
+fn copy_plugin_payload(src: &str, dest: &str, files: &[&str], label: &str) -> Result<bool, String> {
+    if !util::exists(src) {
         return Ok(false);
     }
-    for file in hermes::PLUGIN_FILES {
-        if !util::exists(&jsp::join(&[&src, file])) {
-            return Err(format!("Bundled Hermes plugin is missing {file}: {src}"));
+    for &file in files {
+        if !util::exists(&jsp::join(&[src, file])) {
+            return Err(format!("Bundled {label} is missing {file}: {src}"));
         }
     }
-    let dest = hermes_plugin_dir(sys);
-    util::mkdir_p(&dest)?;
-    for file in hermes::PLUGIN_FILES {
-        util::write_bytes(&jsp::join(&[&dest, file]), &util::read_bytes(&jsp::join(&[&src, file]))?)?;
+    util::mkdir_p(dest)?;
+    for &file in files {
+        util::write_bytes(&jsp::join(&[dest, file]), &util::read_bytes(&jsp::join(&[src, file]))?)?;
     }
     Ok(true)
+}
+
+/// The Pi skills dirs under `root` that hold the impeccable skill, for
+/// `scope`: `<root>/.pi/skills` for a project, Pi's agent dir for the user,
+/// and both when the scope is inferred and `root` is the home dir. The
+/// extension goes beside each (`pi::extension_dir`): Pi discovers it there
+/// together with that skill, and it runs that skill's launcher.
+fn pi_skills_dirs(sys: &Sys, root: &str, scope: Option<Scope>) -> Vec<String> {
+    sys.provider_skills_dir_candidates(root, ".pi", scope)
+        .into_iter()
+        .filter(|dir| util::exists(&jsp::join(&[dir, "impeccable", "SKILL.md"])))
+        .collect()
 }
 
 fn hermes_plugin_dir(sys: &Sys) -> String {

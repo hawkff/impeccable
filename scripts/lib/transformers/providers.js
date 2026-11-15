@@ -128,7 +128,10 @@ export const PROVIDERS = {
     providerTags: ['pi'],
     configDir: '.pi',
     displayName: 'Pi',
+    // The design hook ships as an extension (skill/pi-extension/) under
+    // .pi/extensions/, since Pi hooks are in-process extension handlers.
     frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+    pluginPayload: { source: 'pi-extension', dest: 'extensions/impeccable-design-hook' },
   },
   omp: {
     provider: 'omp',

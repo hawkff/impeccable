@@ -73,7 +73,7 @@ Apply sends staged copy edits to your chat agent while a live session is polling
 
 ## Three ways to run the detector
 
-**In your agent.** The design hook scans every UI file your agent edits and hands the findings back before the agent calls the work done. This is where most slop gets caught: without the hook, the detector only runs when someone remembers to run it. It's available on Claude Code, Cursor, Codex, GitHub Copilot, Grok Build, and Hermes Agent, and the installer sets it up. Say yes. [Automatic design checks](https://impeccable.style/docs/hooks).
+**In your agent.** The design hook scans every UI file your agent edits and hands the findings back before the agent calls the work done. This is where most slop gets caught: without the hook, the detector only runs when someone remembers to run it. It's available on Claude Code, Cursor, Codex, GitHub Copilot, Grok Build, Hermes Agent, and Pi, and the installer sets it up. Say yes. [Automatic design checks](https://impeccable.style/docs/hooks).
 
 **In CI or your terminal.** The CLI needs no agent:
 

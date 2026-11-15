@@ -283,7 +283,8 @@ export function readSourceFiles(rootDir) {
   }
 
   // Provider payloads beside the skill: the dirs provider configs declare
-  // as pluginPayload.source (skill/hermes-plugin/), emitted verbatim.
+  // as pluginPayload.source (skill/hermes-plugin/, skill/pi-extension/),
+  // emitted verbatim.
   const payloads = {};
   for (const source of new Set(Object.values(PROVIDERS).map(c => c.pluginPayload?.source).filter(Boolean))) {
     const dir = path.join(skillDir, source);

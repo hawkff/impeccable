@@ -764,7 +764,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             }
 
             let written_hook_targets = if !missing_hook_targets.is_empty() {
-                copy_provider_hooks(&sys, &bdir, &hook_root, &missing_hook_targets, false, Some(&install_root), None)?
+                copy_provider_hooks(&sys, &bdir, &hook_root, &missing_hook_targets, false, Some(&install_root), None, scope_opt)?
             } else {
                 Vec::new()
             };
@@ -841,7 +841,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
         let agents = bundle::copy_provider_agents(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
         bundle::copy_provider_commands(&sys, &bundle_dir, &install_root, &targets, scope_opt);
         let hooks = if want_hooks {
-            copy_provider_hooks(&sys, &bundle_dir, &hook_root, &targets, force, Some(&install_root), None)?
+            copy_provider_hooks(&sys, &bundle_dir, &hook_root, &targets, force, Some(&install_root), None, scope_opt)?
         } else {
             Vec::new()
         };
@@ -1012,7 +1012,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
             repair_update_hook_manifests(&sys, &hook_root, &root, &copy_providers).map_err(Flow::Throw)?;
             let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &copy_providers, yes, scope == Some(Scope::User))?;
             let hook_targets = if want_hooks {
-                copy_provider_hooks(&sys, &tmp_dir, &hook_root, &copy_providers, force, Some(&root), Some(&project_root)).map_err(Flow::Throw)?
+                copy_provider_hooks(&sys, &tmp_dir, &hook_root, &copy_providers, force, Some(&root), Some(&project_root), scope).map_err(Flow::Throw)?
             } else {
                 Vec::new()
             };
@@ -1071,7 +1071,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         repair_update_hook_manifests(&sys, &hook_root, &root, &copy_providers).map_err(Flow::Throw)?;
         let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &providers, yes, scope == Some(Scope::User))?;
         let hook_targets = if want_hooks {
-            copy_provider_hooks(&sys, &tmp_dir, &hook_root, &providers, force, Some(&root), Some(&project_root)).map_err(Flow::Throw)?
+            copy_provider_hooks(&sys, &tmp_dir, &hook_root, &providers, force, Some(&root), Some(&project_root), scope).map_err(Flow::Throw)?
         } else {
             Vec::new()
         };

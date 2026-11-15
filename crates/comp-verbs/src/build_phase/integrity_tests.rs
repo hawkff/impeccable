@@ -30,6 +30,29 @@ fn completion_is_scoped_and_detects_post_finish_edits() {
 }
 
 #[test]
+fn start_and_completion_take_the_pi_session_from_its_shell() {
+    // Pi's shell tools export PI_SESSION_ID. Another harness's own id wins:
+    // its shell can have been started from one of Pi's.
+    let start = ["start", "--comp", "comp.png", "--artifact", "index.html"].map(String::from);
+    for (vars, owner) in [
+        (vec![("PI_SESSION_ID", "pi-session")], "pi-session"),
+        (vec![("PI_SESSION_ID", "pi-session"), ("CODEX_THREAD_ID", "codex-thread")], "codex-thread"),
+    ] {
+        let ws = Workspace::new();
+        ws.write("comp.png", b"fixture");
+        ws.write("index.html", b"<main>First</main>");
+        let env = vars.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let (mut io, captured) = Io::captured("", ws.path.clone(), env);
+        assert_eq!(run(&start, &mut io, &no_organic_scan), 0);
+        assert_eq!(load_state(&io).unwrap()["sessionId"], owner);
+        captured.stdout.borrow_mut().clear();
+        assert_eq!(run(&["completion".to_string()], &mut io, &no_organic_scan), 0);
+        let report: Value = serde_json::from_slice(&captured.stdout.borrow()).unwrap();
+        assert_eq!(report["sessionScope"], "current-session");
+    }
+}
+
+#[test]
 fn status_next_step_tracks_the_recorded_finish_and_later_entry_edits() {
     let ws = Workspace::new();
     ws.write("index.html", b"<main>Finished</main>");

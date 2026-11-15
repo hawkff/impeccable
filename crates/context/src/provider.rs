@@ -61,7 +61,12 @@ fn provider_from_skill_dir(skill_dir: &str) -> Option<&'static str> {
     if jsp::basename(&skills) != "skills" {
         return None;
     }
-    let harness = jsp::basename(&jsp::dirname(&skills));
+    let parent = jsp::dirname(&skills);
+    let mut harness = jsp::basename(&parent);
+    // Pi's global skills sit one level down: <home>/.pi/agent/skills/impeccable
+    if harness == "agent" && jsp::basename(&jsp::dirname(&parent)) == ".pi" {
+        harness = ".pi".to_string();
+    }
     Some(match harness.as_str() {
         ".claude" => "claude-code",
         ".cursor" => "cursor",
@@ -143,6 +148,17 @@ mod tests {
         let p = with_self(r"C:\Users\A B\skill\scripts\impeccable.cmd");
         assert_eq!(p.verb_cmd("context"), r"& 'C:\Users\A B\skill\scripts\impeccable.cmd' context");
         assert_eq!(p.self_raw, r"C:\Users\A B\skill\scripts\impeccable.cmd");
+    }
+
+    #[test]
+    fn pi_skill_dirs_resolve_to_pi_in_a_project_and_in_the_agent_dir() {
+        let from = |skill_dir: &str| {
+            let env: Env = [("IMPECCABLE_SKILL_DIR".to_string(), skill_dir.to_string())].into_iter().collect();
+            detect(&env, "/project").id
+        };
+        assert_eq!(from("/project/.pi/skills/impeccable"), "pi");
+        assert_eq!(from("/home/u/.pi/agent/skills/impeccable"), "pi");
+        assert_eq!(from("/home/u/agent/skills/impeccable"), SOURCE_PROVIDER, "an agent dir outside .pi is not Pi's");
     }
 
     #[test]

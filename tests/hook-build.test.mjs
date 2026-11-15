@@ -287,6 +287,7 @@ describe('hook manifest builders', () => {
     assert.equal(hooksJsonFor('omp'), null);
     assert.equal(hooksJsonFor('devin'), null);
     assert.equal(hooksJsonFor('hermes'), null);
+    assert.equal(hooksJsonFor('pi'), null);
     assert.equal(hooksJsonFor('unrecognized'), null);
   });
 
@@ -308,6 +309,25 @@ describe('hook manifest builders', () => {
       const manifest = fs.readFileSync(path.join(pluginDir, 'plugin.yaml'), 'utf8');
       assert.match(manifest, /^name: impeccable-design-hook$/m);
       assert.match(manifest, /^provides_hooks:\n  - transform_tool_result\n  - pre_verify$/m);
+    } finally {
+      fs.rmSync(distDir, { recursive: true, force: true });
+    }
+  });
+
+  // Pi has no hook manifest either; the design hook ships as an extension
+  // payload, in the subdirectory layout Pi discovers (`<name>/index.js`).
+  it('emits the Pi design-hook extension verbatim under .pi/extensions/', () => {
+    assert.equal(PROVIDERS.pi.emitHooks, undefined);
+    const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-pi-dist-'));
+    try {
+      createTransformer(PROVIDERS.pi)(readSourceFiles(REPO_ROOT).skills, distDir);
+      const extensionDir = path.join(distDir, 'pi/.pi/extensions/impeccable-design-hook');
+      assert.deepEqual(fs.readdirSync(extensionDir), ['index.js']);
+      assert.equal(
+        fs.readFileSync(path.join(extensionDir, 'index.js'), 'utf8'),
+        fs.readFileSync(path.join(REPO_ROOT, 'skill/pi-extension/index.js'), 'utf8'),
+      );
+      assert.ok(fs.existsSync(path.join(distDir, 'pi/.pi/skills/impeccable/scripts/impeccable')), 'the launcher it runs ships beside it');
     } finally {
       fs.rmSync(distDir, { recursive: true, force: true });
     }

@@ -233,6 +233,17 @@ export default [
     ],
   },
 
+  // Pi: the extension forces the harness too and sends the same events, with
+  // the tool call id; it reads the top-level decision/block itself.
+  {
+    id: 'hook-session-pi-stop-decision', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    env: { IMPECCABLE_HOOK_HARNESS: 'pi' },
+    steps: [
+      { stdin: claudeEdit('src/components/Card.module.css', { session_id: 'pi1', tool_use_id: 'call-1' }) },
+      { stdin: stop({ session_id: 'pi1' }) },
+    ],
+  },
+
   // Umbrella session (#1101): the session cwd is a plain folder holding the
   // projects, so the per-edit pass keys each cache to the project root below
   // it. Stop finds them through the per-user session index (in the case's

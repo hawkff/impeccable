@@ -41,7 +41,7 @@ impl Fixture {
     }
 
     fn install(&self, sys: &Sys) -> Result<Vec<String>, String> {
-        copy_provider_hooks(sys, &self.bundle, &self.project, &[".hermes"], false, None, None)
+        copy_provider_hooks(sys, &self.bundle, &self.project, &[".hermes"], false, None, None, None)
     }
 
     /// The plugin dir under the default Hermes home, as install reports it.

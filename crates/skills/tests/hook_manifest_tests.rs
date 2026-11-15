@@ -181,7 +181,7 @@ fn install_from_an_older_bundle_never_runs_the_post_edit_verb_before_the_edit() 
     }] } }).to_string());
     let sys = sys_with_home("/nonexistent-home");
 
-    copy_provider_hooks(&sys, &bundle, &project, &[".cursor"], false, None, None).unwrap();
+    copy_provider_hooks(&sys, &bundle, &project, &[".cursor"], false, None, None, None).unwrap();
 
     let after: Value = serde_json::from_str(&read(&jsp::join(&[&project, ".cursor", "hooks.json"]))).unwrap();
     assert_eq!(after, json!({ "version": 1, "hooks": {
@@ -758,7 +758,7 @@ fn gemini_install_merges_into_commented_settings_and_force_never_wipes() {
     let original = "{\n  // pick a model\n  \"model\": {\"name\": \"gemini-3-pro\"},\n  /* MCP */ \"mcpServers\": {\"x\": {\"url\": \"http://a//b\"}}\n}\n";
     write(&settings, original);
     let sys = sys_with_home("/nonexistent-home");
-    copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None, None).unwrap();
+    copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None, None, None).unwrap();
     let merged: Value = serde_json::from_str(&read(&settings)).unwrap();
     assert_eq!(merged["model"]["name"], "gemini-3-pro");
     assert_eq!(merged["mcpServers"]["x"]["url"], "http://a//b");
@@ -767,8 +767,8 @@ fn gemini_install_merges_into_commented_settings_and_force_never_wipes() {
     // Truly malformed: refused without --force, and --force never replaces
     // the user's whole settings file with a hooks-only manifest.
     write(&settings, "{ \"model\": ");
-    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None, None).is_err());
-    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], true, None, None).is_err());
+    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None, None, None).is_err());
+    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], true, None, None, None).is_err());
     assert_eq!(read(&settings), "{ \"model\": ");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -795,6 +795,7 @@ fn user_scope_keeps_project_hook_when_bundle_has_no_replacement() {
         false,
         Some(&home),
         Some(&project),
+        None,
     )
     .unwrap();
 
@@ -819,7 +820,7 @@ fn user_scope_install_reports_each_manifest_path_it_wrote() {
     std::fs::create_dir_all(&project).unwrap();
     let sys = home_sys(&home, &home, &[]);
 
-    let written = copy_provider_hooks(&sys, &bundle, &project, &[".claude", ".agents", ".grok"], false, Some(&home), Some(&project)).unwrap();
+    let written = copy_provider_hooks(&sys, &bundle, &project, &[".claude", ".agents", ".grok"], false, Some(&home), Some(&project), None).unwrap();
 
     assert_eq!(
         written,
@@ -951,7 +952,7 @@ fn global_install_prunes_the_project_copy_under_a_home_with_an_apostrophe() {
     write(&project_cursor, &json!({ "version": 1, "hooks": { "postToolUse": [{ "command": format!("[ ! -f {q} ] || {q} hook"), "matcher": "^Write$" }, { "command": "./format.sh" }] } }).to_string());
     let sys = home_sys(&home, &project, &[]);
 
-    copy_provider_hooks(&sys, &bundle, &project, &[".cursor"], false, Some(&home), Some(&project)).unwrap();
+    copy_provider_hooks(&sys, &bundle, &project, &[".cursor"], false, Some(&home), Some(&project), None).unwrap();
 
     let after: Value = serde_json::from_str(&read(&project_cursor)).unwrap();
     assert_eq!(after, json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "./format.sh" }] } }));
@@ -973,7 +974,7 @@ fn a_dead_home_hook_does_not_count_as_installed() {
         assert!(!hook_installed_for_provider_at_scope(&sys, &fx.project, provider, true), "{provider}");
     }
     // Current entries, but the home launcher is gone: dead too.
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
     assert!(hook_installed_for_provider_at_scope(&sys, &fx.project, ".cursor", true));
     std::fs::remove_file(skill_launcher(&fx.home, ".cursor")).unwrap();
     assert!(!hook_installed_for_provider_at_scope(&sys, &fx.project, ".cursor", true));
@@ -984,7 +985,7 @@ fn global_install_writes_codex_cursor_and_grok_hooks_under_home() {
     let fx = home_fixture("home-hooks");
     let sys = home_sys(&fx.home, &fx.project, &[]);
 
-    let written = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor", ".grok", ".github"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    let written = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor", ".grok", ".github"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     let codex = jsp::join(&[&fx.home, ".codex", "hooks.json"]);
     let cursor = jsp::join(&[&fx.home, ".cursor", "hooks.json"]);
@@ -1012,7 +1013,7 @@ fn global_codex_hook_honors_codex_home() {
     let codex_home = jsp::join(&[&fx.dir.to_string_lossy(), "codex-home"]);
     let sys = home_sys(&fx.home, &fx.project, &[("CODEX_HOME", &codex_home)]);
 
-    let written = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    let written = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     let dest = std::path::Path::new(&fx.project).join(&codex_home).join("hooks.json").to_string_lossy().into_owned();
     assert_eq!(written, [dest.clone()]);
@@ -1032,7 +1033,7 @@ fn global_install_keeps_the_users_own_home_hooks() {
     write(&codex, &json!({ "hooks": { "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "./lint.sh" }] }], "SessionStart": [{ "hooks": [{ "type": "command", "command": "./hello.sh" }] }] } }).to_string());
     write(&cursor, &json!({ "version": 1, "theme": "mine", "hooks": { "stop": [{ "command": "./notify.sh" }] } }).to_string());
 
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     let codex_after: Value = serde_json::from_str(&read(&codex)).unwrap();
     let post = codex_after["hooks"]["PostToolUse"].as_array().unwrap();
@@ -1046,10 +1047,10 @@ fn global_install_keeps_the_users_own_home_hooks() {
 
     // A home manifest that is not JSON is never replaced without --force.
     write(&cursor, "{ broken");
-    let err = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap_err();
+    let err = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap_err();
     assert!(err.contains("Existing hook manifest is not valid JSON") && err.contains(&cursor), "{err}");
     assert_eq!(read(&cursor), "{ broken");
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], true, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], true, Some(&fx.home), Some(&fx.project), None).unwrap();
     assert_eq!(read(&format!("{cursor}.bak")), "{ broken");
 }
 
@@ -1058,7 +1059,7 @@ fn project_install_still_writes_project_manifests() {
     let fx = home_fixture("project-hooks");
     let sys = home_sys(&fx.home, &fx.project, &[]);
 
-    let written = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor", ".grok"], false, None, None).unwrap();
+    let written = copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor", ".grok"], false, None, None, None).unwrap();
 
     assert_eq!(
         written,
@@ -1094,7 +1095,7 @@ fn global_install_prunes_only_the_stale_project_copy_of_the_home_hook() {
     let project_grok_text = json!({ "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": "[ ! -f \".grok/skills/impeccable/scripts/impeccable\" ] || \".grok/skills/impeccable/scripts/impeccable\" hook" }] }] } }).to_string();
     write(&project_grok, &project_grok_text);
 
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor", ".grok"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".agents", ".cursor", ".grok"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     let cursor_after: Value = serde_json::from_str(&read(&project_cursor)).unwrap();
     assert_eq!(cursor_after, json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "./format.sh" }] } }));
@@ -1112,7 +1113,7 @@ fn global_install_keeps_a_project_owned_hook_on_the_project_skill() {
     // cleanup that follows does not mistake it for a global leftover.
     let fx = home_fixture("home-hooks-project-owned");
     let sys = home_sys(&fx.home, &fx.project, &[]);
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
     assert!(file_has_impeccable_hook_marker(&jsp::join(&[&fx.home, ".cursor", "hooks.json"])));
     write(&jsp::join(&[&fx.project, ".cursor", "skills", "impeccable", "scripts", "impeccable"]), "#!/bin/sh\n");
     let project_cursor = jsp::join(&[&fx.project, ".cursor", "hooks.json"]);
@@ -1142,7 +1143,7 @@ fn first_global_install_repairs_and_prunes_a_v3_project_hook() {
         "postToolUse": [{ "command": "node .cursor/skills/impeccable/scripts/hook.mjs", "matcher": "^Write$", "timeout": 5 }],
     } }).to_string());
 
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     assert!(file_has_impeccable_hook_marker(&jsp::join(&[&fx.home, ".cursor", "hooks.json"])));
     let after = std::fs::read_to_string(&project_cursor).unwrap_or_default();
@@ -1164,7 +1165,7 @@ fn first_global_install_leaves_a_v3_project_hook_when_no_home_hook_is_written() 
     } }).to_string();
     write(&project_cursor, &text);
 
-    copy_provider_hooks(&sys, &bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     assert!(!exists(&jsp::join(&[&fx.home, ".cursor", "hooks.json"])));
     assert_eq!(read(&project_cursor), text);
@@ -1178,7 +1179,7 @@ fn first_global_install_never_rewrites_committed_claude_settings() {
     let text = json!({ "hooks": { "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node .claude/skills/impeccable/scripts/hook.mjs" }] }] } }).to_string();
     write(&settings, &text);
 
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".claude", ".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".claude", ".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
 
     assert_eq!(read(&settings), text);
 }
@@ -1195,7 +1196,7 @@ fn stale_project_copy_stays_while_the_home_hook_is_not_wired() {
     assert!(prune_duplicate_home_hooks(&sys, &fx.home, &fx.project, &[".cursor"]).unwrap().is_empty());
     assert_eq!(read(&project_cursor), text);
     // Running from home itself never prunes the home manifest as a "project".
-    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project), None).unwrap();
     let home_cursor = jsp::join(&[&fx.home, ".cursor", "hooks.json"]);
     assert!(prune_duplicate_home_hooks(&sys, &fx.home, &fx.home, &[".cursor"]).unwrap().is_empty());
     assert!(file_has_impeccable_hook_marker(&home_cursor));
@@ -1223,7 +1224,7 @@ fn github_user_scope_install_points_the_project_hook_at_the_home_skill() {
     assert!(!hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
     assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", false));
 
-    let written = copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project)).unwrap();
+    let written = copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project), None).unwrap();
     assert_eq!(written, [manifest.clone()]);
     let after: Value = serde_json::from_str(&read(&manifest)).unwrap();
     let gp = skill_launcher(&home, ".github");
@@ -1242,7 +1243,7 @@ fn github_user_scope_install_points_the_project_hook_at_the_home_skill() {
     write(&skill_launcher(&project, ".github"), "#!/bin/sh\n");
     write(&manifest, &github_bundle_manifest().to_string());
     assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
-    copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project)).unwrap();
+    copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project), None).unwrap();
     let kept: Value = serde_json::from_str(&read(&manifest)).unwrap();
     assert_eq!(kept["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
     assert_eq!(kept["hooks"]["postToolUse"][0]["bash"], GITHUB_PORTABLE);
@@ -1263,7 +1264,7 @@ fn partial_shared_settings_never_prune_the_project_hook() {
     let mut partial = fresh;
     partial["hooks"].as_object_mut().unwrap().remove("Stop");
     write(&format!("{root}/.claude/settings.json"), &partial.to_string());
-    copy_provider_hooks(&sys, &bundle, &root, &[".claude"], false, None, None).unwrap();
+    copy_provider_hooks(&sys, &bundle, &root, &[".claude"], false, None, None, None).unwrap();
     assert!(std::path::Path::new(&format!("{root}/.claude/settings.local.json")).exists());
     let _ = std::fs::remove_dir_all(dir);
 }

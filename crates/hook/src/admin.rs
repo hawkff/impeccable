@@ -360,6 +360,12 @@ fn hermes_hook_is_wired(rt: &Runtime) -> bool {
     impeccable_context::hermes::plugin_enabled(&home)
 }
 
+/// The Pi extension with its launcher, in this project or in Pi's agent dir.
+fn pi_hook_is_wired(rt: &Runtime, cwd: &str) -> bool {
+    use impeccable_context::pi;
+    pi::hook_ready(&jsp::join(&[cwd, ".pi", "skills"])) || pi::hook_ready(&pi::global_skills_dir(&rt.homedir()))
+}
+
 fn target_is_wired(rt: &Runtime, cwd: &str, target: &impeccable_context::hook_wiring::ManifestTarget) -> bool {
     let fresh = (target.manifest)();
     let provider_id = match target.provider {
@@ -454,7 +460,8 @@ fn status_report(rt: &Runtime, cwd: &str) -> String {
         ),
     ];
     let hermes_wired = hermes_hook_is_wired(rt);
-    let mut any = hermes_wired;
+    let pi_wired = pi_hook_is_wired(rt, cwd);
+    let mut any = hermes_wired || pi_wired;
     for target in HOOK_MANIFEST_TARGETS {
         let wired = target_is_wired(rt, cwd, target);
         if target.provider != ".gemini" { any |= wired; }
@@ -462,6 +469,9 @@ fn status_report(rt: &Runtime, cwd: &str) -> String {
     }
     if hermes_wired {
         lines.push("  wiring .hermes: wired (enabled plugin)".to_string());
+    }
+    if pi_wired {
+        lines.push("  wiring .pi: wired (extension)".to_string());
     }
     if cfg.enabled && !any {
         lines.push("enabled in config, not wired in any harness; repair with: impeccable hooks on".to_string());
@@ -509,6 +519,7 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
     let local_target = write_hook_config(rt, cwd, &consent, true)?;
     let repaired = repair_hook_manifests(rt, cwd, false)?;
     let hermes_wired = hermes_hook_is_wired(rt);
+    let pi_wired = pi_hook_is_wired(rt, cwd);
     let mut parts = vec![
         format!(
             "Design hook enabled for this project (wrote {}).",
@@ -531,6 +542,8 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
         ));
     } else if hermes_wired {
         parts.push("Hermes design hook plugin is already enabled.".to_string());
+    } else if pi_wired {
+        parts.push("Pi design hook extension is already installed.".to_string());
     } else if repaired.skipped.is_empty() {
         parts.push("No installed provider skill folders found to repair.".to_string());
     }
@@ -551,7 +564,7 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
             names.join(", ")
         ));
     }
-    if !hermes_wired && !HOOK_MANIFEST_TARGETS.iter().any(|target| target.provider != ".gemini" && target_is_wired(rt, cwd, target)) {
+    if !hermes_wired && !pi_wired && !HOOK_MANIFEST_TARGETS.iter().any(|target| target.provider != ".gemini" && target_is_wired(rt, cwd, target)) {
         let user_dir = impeccable_context::context_cli::claude_config_dir(&rt.proc_cwd, &rt.env);
         parts.push(format!(
             "No design harness is wired. Checked Claude Code project skill {} and user launcher {}. Install the skill for your harness or fix the skipped settings, then run impeccable hooks on.",
